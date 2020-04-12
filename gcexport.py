@@ -394,7 +394,7 @@ def parse_arguments(argv):
     parser.add_argument('--password',
         help='your Garmin Connect password (otherwise, you will be prompted)')
     parser.add_argument('-c', '--count', default='1',
-        help='number of recent activities to download, or \'all\' (default: 1)')
+        help='number of recent activities to download, or \'new\', or \'all\' (default: 1)')
     parser.add_argument('-e', '--external',
         help='path to external program to pass CSV file too')
     parser.add_argument('-a', '--args',
@@ -796,6 +796,19 @@ def main(argv):
     if not isdir(args.directory):
         mkdir(args.directory)
 
+    # Reads the last connection date from file
+    last_filename = args.directory + '/last.txt'
+    last_existed = isfile(last_filename)
+    if last_existed:
+        last_file = open(last_filename, 'r')
+        latest_date = last_file.readline()
+        last_file.close()
+
+    # If the request is for newer activites but last connection date is unknown, then all activities will be downloaded.
+    if (args.count == 'new') and (not last_existed):
+        latest_date = '1901-01-01'
+        print('Retrieving all activities...')
+
     csv_filename = args.directory + '/activities.csv'
     csv_existed = isfile(csv_filename)
 
@@ -834,6 +847,9 @@ def main(argv):
         # Modify total_to_download based on how many activities the server reports.
         json_results = json.loads(result)
         total_to_download = int(json_results['userMetrics'][0]['totalActivities'])
+    # argument 'new' to download the minimum necessary activities
+    elif args.count == 'new':
+        total_to_download = 1
     else:
         total_to_download = int(args.count)
     total_downloaded = 0
@@ -858,7 +874,11 @@ def main(argv):
         else:
             num_to_download = total_to_download - total_downloaded
 
-        search_params = {'start': total_downloaded, 'limit': num_to_download}
+        # Gets activites since last connection date when argument is 'new'
+        if args.count == 'new':
+            search_params = {'startDate': latest_date, 'sortBy': 'startLocal', 'sortOrder': 'asc'}
+        else:
+            search_params = {'start': total_downloaded, 'limit': num_to_download}
         # Query Garmin Connect
         print('Querying list of activities ' + str(total_downloaded + 1) \
               + '..' + str(total_downloaded + num_to_download) \
@@ -979,6 +999,10 @@ def main(argv):
                     csv_write_record(csv_filter, extract, actvty, details, activity_type_name, event_type_name)
 
             current_index += 1
+
+            # Set the latest_date to the date of the latest downloaded activity
+            latest_date = actvty['startTimeLocal'][0:10]
+
         # End for loop for activities of chunk
         total_downloaded += num_to_download
     # End while loop for multiple chunks.
@@ -989,6 +1013,12 @@ def main(argv):
         print('Open CSV output.')
         print(csv_filename)
         call([args.external, "--" + args.args, csv_filename])
+
+    # Saves latest downloaded activity date to last connection file
+    last_file = open(last_filename, 'w')
+    last_file.write(latest_date)
+    last_file.close()
+    print('Updating latest downloaded date in file.')
 
     print('Done!')
 
