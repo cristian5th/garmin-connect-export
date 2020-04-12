@@ -637,7 +637,7 @@ def load_gear(activity_id, args):
         # logging.exception(e)
 
 
-def export_data_file(activity_id, activity_details, args, file_time, append_desc, start_time_locale):
+def export_data_file(activity_id, activity_details, args, file_time, friendly_filename, start_time_locale):
     """
     Write the data of the activity to a file, depending on the chosen data format
     """
@@ -651,29 +651,22 @@ def export_data_file(activity_id, activity_details, args, file_time, append_desc
     if not isdir(directory):
         makedirs(directory)
 
-    # timestamp as prefix for filename
-    if args.fileprefix > 0:
-        prefix = "{}-".format(start_time_locale.replace("-", "").replace(":", b"").replace(" ", "-"))
-    else:
-        prefix = ""
-
     fit_filename = None
     if args.format == 'gpx':
-        data_filename = directory + '/' + prefix + 'activity_' + activity_id + append_desc + '.gpx'
+        data_filename = directory + '/' + friendly_filename + '.gpx'
         download_url = URL_GC_GPX_ACTIVITY + activity_id + '?full=true'
         file_mode = 'w'
     elif args.format == 'tcx':
-        data_filename = directory + '/' + prefix + 'activity_' + activity_id + append_desc + '.tcx'
+        data_filename = directory + '/' + friendly_filename + '.tcx'
         download_url = URL_GC_TCX_ACTIVITY + activity_id + '?full=true'
         file_mode = 'w'
     elif args.format == 'original':
-        data_filename = directory + '/' + prefix + 'activity_' + activity_id + append_desc + '.zip'
-        # TODO not all 'original' files are in FIT format, some are GPX or TCX...
-        fit_filename = directory + '/' + prefix + 'activity_' + activity_id + append_desc + '.fit'
+        data_filename = directory + '/' + friendly_filename + '.zip'
+        fit_filename = directory + '/' + friendly_filename
         download_url = URL_GC_ORIGINAL_ACTIVITY + activity_id
         file_mode = 'wb'
     elif args.format == 'json':
-        data_filename = directory + '/' + prefix + 'activity_' + activity_id + append_desc + '.json'
+        data_filename = directory + '/' + friendly_filename + '.json'
         file_mode = 'w'
     else:
         raise Exception('Unrecognized format.')
@@ -681,13 +674,15 @@ def export_data_file(activity_id, activity_details, args, file_time, append_desc
     if isfile(data_filename):
         logging.debug('Data file for %s already exists', activity_id)
         print('\tData file already exists; skipping...')
-        return
+        # Inform the main program that the file already exists
+        return False
 
-    # Regardless of unzip setting, don't redownload if the ZIP or FIT file exists.
-    if args.format == 'original' and isfile(fit_filename):
+    # Regardless of unzip setting, don't redownload if the ZIP or FIT or GPX or TCX file exists.
+    if args.format == 'original' and (isfile(fit_filename + '.fit') or isfile(fit_filename + '.gpx') or isfile(fit_filename + '.tcx')):
         logging.debug('Original data file for %s already exists', activity_id)
         print('\tFIT data file already exists; skipping...')
-        return
+        # Inform the main program that the file already exists
+        return False
 
     if args.format != 'json':
         # Download the data file from Garmin Connect. If the download fails (e.g., due to timeout),
@@ -732,7 +727,7 @@ def export_data_file(activity_id, activity_details, args, file_time, append_desc
                     unzipped_name = zip_obj.extract(name, directory)
                     # prepend 'activity_' and append the description to the base name
                     name_base, name_ext = splitext(name)
-                    new_name = directory + '/activity_' + name_base + append_desc + name_ext
+                    new_name = directory + '/' + friendly_filename + name_ext
                     logging.debug('renaming %s to %s', unzipped_name, new_name)
                     rename(unzipped_name, new_name)
                     if file_time:
@@ -742,11 +737,15 @@ def export_data_file(activity_id, activity_details, args, file_time, append_desc
                 print('\tSkipping 0Kb zip file.')
             remove(data_filename)
 
+    # Inform the main program that the file is new
+    return True
+
 
 def setup_logging():
     """Setup logging"""
     logging.basicConfig(
-        filename='gcexport.log',
+        # Complete path to log file is needed or else launchd will get IOError: [Errno 13] Permission denied when trying to write to the root folder
+        filename='/Users/cralvarez/Documents/CartoGPS/Data/gcexport.log',
         level=logging.DEBUG,
         format='%(asctime)s [%(levelname)-7.7s] %(message)s'
     )
@@ -910,7 +909,8 @@ def main(argv):
                 print('Garmin Connect activity ', end='')
                 print('(' + str(current_index) + '/' + str(total_to_download) + ') ', end='')
                 print('[' + str(actvty['activityId']) + '] ', end='')
-                print(actvty['activityName'])
+                # If not encoded as utf-8, it will fail when executed by Cron
+                print(actvty['activityName'].encode('utf-8'))
 
                 # Retrieve also the detail data from the activity (the one displayed on
                 # the https://connect.garmin.com/modern/activity/xxx page), because some
@@ -946,6 +946,13 @@ def main(argv):
                 else:
                     print('0.000 km')
 
+                # timestamp as prefix for filename
+                start_time_locale = actvty['startTimeLocal']
+                if args.fileprefix > 0:
+                    prefix = "{}_".format(start_time_locale.replace("-", "").replace(":", b"").replace(" ", "-"))
+                else:
+                    prefix = ""
+
                 if args.desc != None:
                     append_desc = '_' + sanitize_filename(actvty['activityName'], args.desc)
                 else:
@@ -979,11 +986,15 @@ def main(argv):
                 if csv_filter.is_column_active('gear'):
                     extract['gear'] = load_gear(str(actvty['activityId']), args)
 
-                # Write stats to CSV.
-                csv_write_record(csv_filter, extract, actvty, details, activity_type_name, event_type_name)
+                # Get the friendly filename
+                friendly_filename = prefix #+ 'activity_' + str(actvty['activityId']) + append_desc
+                friendly_filename += actvty['activityName'].replace('/', '_') if present('activityName', actvty) else ('activity_' + str(actvty['activityId']))
+                friendly_filename += '_(' + value_if_found_else_key(activity_type_name, 'activity_type_' + actvty['activityType']['typeKey']).replace('/', '_') + ')' if present('activityType', actvty) else ''
 
-                export_data_file(str(actvty['activityId']), activity_details, args, start_time_seconds, append_desc,
-                                 actvty['startTimeLocal'])
+                # Save the file and inform if it already existed. If the file already existed, do not apped the record to the csv
+                if export_data_file(str(actvty['activityId']), activity_details, args, start_time_seconds, friendly_filename, actvty['startTimeLocal']):
+                    # Write stats to CSV.
+                    csv_write_record(csv_filter, extract, actvty, details, activity_type_name, event_type_name)
 
             current_index += 1
         # End for loop for activities of chunk
