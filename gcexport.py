@@ -152,7 +152,6 @@ def resolve_path(directory, subdir, time):
 
     return ret
 
-
 def hhmmss_from_seconds(sec):
     """Helper function that converts seconds to HH:MM:SS time format."""
     if isinstance(sec, (float, int)):
@@ -772,23 +771,6 @@ def logging_verbosity(verbosity):
             level = logging.DEBUG if verbosity > 1 else (logging.INFO if verbosity > 0 else logging.WARN)
             handler.setLevel(level)
             logging.debug('New console log level: %s', logging.getLevelName(level))
-
-
-def resolve_path(directory, subdir, time):
-    """
-    Replace time variables and returns changed path. Supported place holders are {YYYY} and {MM}
-    :param directory: export root directory
-    :param subdir: subdirectory, can have place holders.
-    :param time: date-time-string
-    :return: Updated dictionary string
-    """
-    ret = join(directory, subdir)
-    if re.compile(".*{YYYY}.*").match(ret):
-        ret = ret.replace("{YYYY}", time[0:4])
-    if re.compile(".*{MM}.*").match(ret):
-        ret = ret.replace("{MM}", time[5:7])
-
-    return ret
 
 
 def main(argv):
