@@ -797,16 +797,16 @@ def main(argv):
         mkdir(args.directory)
 
     # Reads the last connection date from file
-    last_filename = args.directory + '/last.txt'
+    last_filename = args.directory + '/last_activity.txt'
     last_existed = isfile(last_filename)
     if last_existed:
         last_file = open(last_filename, 'r')
-        latest_date = last_file.readline()
+        last_date = last_file.readline()
         last_file.close()
 
     # If the request is for newer activites but last connection date is unknown, then all activities will be downloaded.
     if (args.count == 'new') and (not last_existed):
-        latest_date = '1901-01-01'
+        last_date = '1901-01-01'
         print('Retrieving all activities...')
 
     csv_filename = args.directory + '/activities.csv'
@@ -876,7 +876,7 @@ def main(argv):
 
         # Gets activites since last connection date when argument is 'new'
         if args.count == 'new':
-            search_params = {'startDate': latest_date, 'sortBy': 'startLocal', 'sortOrder': 'asc'}
+            search_params = {'startDate': last_date, 'sortBy': 'startLocal', 'sortOrder': 'asc'}
         else:
             search_params = {'start': total_downloaded, 'limit': num_to_download}
         # Query Garmin Connect
@@ -1000,8 +1000,8 @@ def main(argv):
 
             current_index += 1
 
-            # Set the latest_date to the date of the latest downloaded activity
-            latest_date = actvty['startTimeLocal'][0:10]
+            # Set the last_date to the date of the latest downloaded activity
+            last_date = actvty['startTimeLocal'][0:10]
 
         # End for loop for activities of chunk
         total_downloaded += num_to_download
@@ -1016,7 +1016,7 @@ def main(argv):
 
     # Saves latest downloaded activity date to last connection file
     last_file = open(last_filename, 'w')
-    last_file.write(latest_date)
+    last_file.write(last_date)
     last_file.close()
     print('Updating latest downloaded date in file.')
 
