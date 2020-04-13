@@ -599,9 +599,9 @@ def extract_device(device_dict, details, start_time_seconds, args, http_caller, 
             device_id = device_meta['deviceId'] if present('deviceId', device_meta) else None
             if not device_meta.has_key('deviceId') or device_id and device_id != '0':
                 device_json = http_caller(URL_GC_DEVICE + str(device_app_inst_id))
-                file_writer(args.directory + '/device_' + str(device_app_inst_id) + '.json',
-                            device_json, 'w',
-                            start_time_seconds)
+                # file_writer(args.directory + '/device_' + str(device_app_inst_id) + '.json',
+                #             device_json, 'w',
+                #             start_time_seconds)
                 if not device_json:
                     logging.warning("Device Details %s are empty", device_app_inst_id)
                     device_dict[device_app_inst_id] = "device-id:" + str(device_app_inst_id)
@@ -804,11 +804,6 @@ def main(argv):
         last_date = last_file.readline()
         last_file.close()
 
-    # If the request is for newer activites but last connection date is unknown, then all activities will be downloaded.
-    if (args.count == 'new') and (not last_existed):
-        last_date = '1901-01-01'
-        print('Retrieving all activities...')
-
     csv_filename = args.directory + '/activities.csv'
     csv_existed = isfile(csv_filename)
 
@@ -819,7 +814,7 @@ def main(argv):
     if not csv_existed:
         csv_filter.write_header()
 
-    if args.count == 'all':
+    if ((args.count == 'all') or ((args.count == 'new') and (not last_existed))):
         # If the user wants to download all activities, query the userstats
         # on the profile page to know how many are available
         print('Getting display name...', end='')
@@ -847,9 +842,13 @@ def main(argv):
         # Modify total_to_download based on how many activities the server reports.
         json_results = json.loads(result)
         total_to_download = int(json_results['userMetrics'][0]['totalActivities'])
-    # argument 'new' to download the minimum necessary activities
-    elif args.count == 'new':
-        total_to_download = 1
+
+        # argument 'new' to download the minimum necessary activities
+        if args.count == 'new':
+            last_date = '1901-01-01'
+            print('Retrieving all activities...')
+    elif (args.count == 'new'):
+        total_to_download = 99
     else:
         total_to_download = int(args.count)
     total_downloaded = 0
@@ -889,10 +888,10 @@ def main(argv):
 
         # Persist JSON activities list
         current_index = total_downloaded + 1
-        activities_list_filename = '/activities-' \
-            + str(current_index) + '-' \
-            + str(total_downloaded + num_to_download) + '.json'
-        write_to_file(args.directory + activities_list_filename, result, 'w')
+        # activities_list_filename = '/activities-' \
+        #     + str(current_index) + '-' \
+        #     + str(total_downloaded + num_to_download) + '.json'
+        # write_to_file(args.directory + activities_list_filename, result, 'w')
 
         activities = json.loads(result)
         if len(activities) != num_to_download:
@@ -1004,7 +1003,12 @@ def main(argv):
             last_date = actvty['startTimeLocal'][0:10]
 
         # End for loop for activities of chunk
-        total_downloaded += num_to_download
+        total_downloaded += len(activities)
+        # Saves latest downloaded activity date to last connection file
+        last_file = open(last_filename, 'w')
+        last_file.write(last_date)
+        last_file.close()
+        print('Updating latest downloaded date in file.')
     # End while loop for multiple chunks.
 
     csv_file.close()
@@ -1013,12 +1017,6 @@ def main(argv):
         print('Open CSV output.')
         print(csv_filename)
         call([args.external, "--" + args.args, csv_filename])
-
-    # Saves latest downloaded activity date to last connection file
-    last_file = open(last_filename, 'w')
-    last_file.write(last_date)
-    last_file.close()
-    print('Updating latest downloaded date in file.')
 
     print('Done!')
 
