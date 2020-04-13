@@ -837,7 +837,7 @@ def main(argv):
         print(' Done.')
 
         # Persist JSON
-        write_to_file(args.directory + '/userstats.json', result, 'w')
+        # write_to_file(args.directory + '/userstats.json', result, 'w')
 
         # Modify total_to_download based on how many activities the server reports.
         json_results = json.loads(result)
