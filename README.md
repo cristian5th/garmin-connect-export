@@ -61,8 +61,8 @@ optional arguments:
   --password PASSWORD   your Garmin Connect password (otherwise, you will be
                         prompted)
   -c COUNT, --count COUNT
-                        number of recent activities to download, or 'all'
-                        (default: 1)
+                        number of recent activities to download, or 'new', 
+                        or 'all' (default: 1)
   -e EXTERNAL, --external EXTERNAL
                         path to external program to pass CSV file too
   -a ARGS, --args ARGS  additional arguments to pass to external program
