@@ -168,6 +168,7 @@ def resolve_path(directory, subdir, time):
 
     return ret
 
+
 def hhmmss_from_seconds(sec):
     """Helper function that converts seconds to HH:MM:SS time format."""
     if isinstance(sec, (float, int)):
@@ -809,7 +810,6 @@ def export_data_file(activity_id, activity_details, args, file_time, friendly_fi
     # Inform the main program that the file is new
     return True
 
-
 def setup_logging():
     """Setup logging"""
     logging.basicConfig(
@@ -868,7 +868,7 @@ def main(argv):
 
     # Reads the last connection date from file
     last_filename = args.directory + '/last_activity.txt'
-    last_existed = isfile(last_filename)
+    last_existed = os.path.isfile(last_filename)
     if last_existed:
         last_file = open(last_filename, 'r')
         last_date = last_file.readline()
