@@ -810,11 +810,10 @@ def export_data_file(activity_id, activity_details, args, file_time, friendly_fi
     # Inform the main program that the file is new
     return True
 
-def setup_logging():
+def setup_logging(args):
     """Setup logging"""
     logging.basicConfig(
-        # Complete path to log file is needed or else launchd will get IOError: [Errno 13] Permission denied when trying to write to the root folder
-        filename='/Users/cralvarez/Documents/CartoGPS/Data/gcexport.log',
+        filename=args.directory + '/gcexport.log',
         level=logging.DEBUG,
         format='%(asctime)s [%(levelname)-7.7s] %(message)s'
     )
@@ -847,9 +846,9 @@ def main(argv):
     """
     Main entry point for gcexport.py
     """
-    setup_logging()
-    logging.info("Starting %s version %s, using Python version %s", argv[0], SCRIPT_VERSION, python_version())
     args = parse_arguments(argv)
+    setup_logging(args)
+    logging.info("Starting %s version %s, using Python version %s", argv[0], SCRIPT_VERSION, python_version())
     logging_verbosity(args.verbosity)
 
     print('Welcome to Garmin Connect Exporter!')
@@ -866,13 +865,16 @@ def main(argv):
     if not os.path.isdir(args.directory):
         os.mkdir(args.directory)
 
-    # Reads the last connection date from file
-    last_filename = args.directory + '/last_activity.txt'
-    last_existed = os.path.isfile(last_filename)
-    if last_existed:
-        last_file = open(last_filename, 'r')
-        last_date = last_file.readline()
-        last_file.close()
+    if args.count == 'new':
+        # Reads the last connection date from file
+        last_filename = args.directory + '/last_activity.txt'
+        last_existed = os.path.isfile(last_filename)
+        if last_existed:
+            last_file = open(last_filename, 'r')
+            last_date = last_file.readline()
+            last_file.close()
+        else:
+            last_date = '1901-01-01'
 
     csv_filename = args.directory + '/activities.csv'
     csv_existed = os.path.isfile(csv_filename)
@@ -887,7 +889,7 @@ def main(argv):
     if not csv_existed:
         csv_filter.write_header()
 
-    if ((args.count == 'all') or ((args.count == 'new') and (not last_existed))):
+    if (args.count == 'all') or ((args.count == 'new') and (not last_existed)):
         # If the user wants to download all activities, query the userstats
         # on the profile page to know how many are available
         print('Getting display name...', end='')
@@ -915,12 +917,7 @@ def main(argv):
         # Modify total_to_download based on how many activities the server reports.
         json_results = json.loads(result)
         total_to_download = int(json_results['userMetrics'][0]['totalActivities'])
-
-        # argument 'new' to download the minimum necessary activities
-        if args.count == 'new':
-            last_date = '1901-01-01'
-            print('Retrieving all activities...')
-    elif (args.count == 'new'):
+    elif args.count == 'new':
         total_to_download = 99
     else:
         total_to_download = int(args.count)
@@ -948,7 +945,7 @@ def main(argv):
 
         # Gets activites since last connection date when argument is 'new'
         if args.count == 'new':
-            search_params = {'startDate': last_date, 'sortBy': 'startLocal', 'sortOrder': 'asc'}
+            search_params = {'startDate': last_date, 'sortBy': 'startLocal', 'sortOrder': 'asc', 'limit': num_to_download}
         else:
             search_params = {'start': total_downloaded, 'limit': num_to_download}
         # Query Garmin Connect
@@ -971,6 +968,12 @@ def main(argv):
         activities = json.loads(result)
         if len(activities) != num_to_download:
             logging.warning('Expected %s activities, got %s.', num_to_download, len(activities))
+            total_to_download = len(activities)
+            if total_to_download - total_downloaded > LIMIT_MAXIMUM:
+                num_to_download = LIMIT_MAXIMUM
+            else:
+                num_to_download = total_to_download - total_downloaded
+
 
         # Process each activity.
         for actvty in activities:
@@ -985,8 +988,7 @@ def main(argv):
                 print('Garmin Connect activity ', end='')
                 print('(', current_index, '/', total_to_download, ') ', sep='', end='')
                 print('[', actvty['activityId'], '] ', sep='', end='')
-                # If not encoded as utf-8, it will fail when executed by Cron
-                print(actvty['activityName'].encode('utf-8'))
+                print(actvty['activityName'])
 
                 # Retrieve also the detail data from the activity (the one displayed on
                 # the https://connect.garmin.com/modern/activity/xxx page), because some
@@ -1025,7 +1027,7 @@ def main(argv):
                 # timestamp as prefix for filename
                 start_time_locale = actvty['startTimeLocal']
                 if args.fileprefix > 0:
-                    prefix = "{}_".format(start_time_locale.replace("-", "").replace(":", b"").replace(" ", "-"))
+                    prefix = "{}_".format(start_time_locale.replace("-", "").replace(":", "").replace(" ", "-"))
                 else:
                     prefix = ""
 
@@ -1063,7 +1065,7 @@ def main(argv):
                     extract['gear'] = load_gear(str(actvty['activityId']), args)
 
                 # Get the friendly filename
-                friendly_filename = prefix #+ 'activity_' + str(actvty['activityId']) + append_desc
+                friendly_filename = prefix
                 friendly_filename += actvty['activityName'].replace('/', '_') if present('activityName', actvty) else ('activity_' + str(actvty['activityId']))
                 friendly_filename += '_(' + value_if_found_else_key(activity_type_name, 'activity_type_' + actvty['activityType']['typeKey']).replace('/', '_') + ')' if present('activityType', actvty) else ''
 
@@ -1078,7 +1080,7 @@ def main(argv):
             last_date = actvty['startTimeLocal'][0:10]
 
         # End for loop for activities of chunk
-        total_downloaded += len(activities)
+        total_downloaded += num_to_download
         # Saves latest downloaded activity date to last connection file
         last_file = open(last_filename, 'w')
         last_file.write(last_date)
